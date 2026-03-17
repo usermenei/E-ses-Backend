@@ -1,0 +1,48 @@
+@startuml
+skinparam backgroundColor #EEF2F5
+skinparam participantBackgroundColor #A9C2C3
+skinparam participantBorderColor gray
+skinparam sequenceLifeLineBackgroundColor #CC3333
+skinparam sequenceArrowColor black
+skinparam noteBackgroundColor #FDE284
+skinparam noteBorderColor #FDE284
+
+note left of server: create coworkingspace: post
+
+participant "<<javaScript>>\n:server" as server
+participant "<<router>>\n:coworkingspaces" as router
+participant "<<middleware>>\n:auth" as auth
+participant "<<controllers>>\n:coworkingspaces" as controller
+participant "<<model>>\n:Coworkingspace" as model
+participant "<<MongoDB>>\n:coworkingspaces" as db
+
+-> server : req.post('/api/v1/coworkingspaces')
+activate server
+
+server -> router : app.use('/coworkingspaces', coworkingspaces)
+activate router
+
+router -> auth : protect, authorize
+activate auth
+auth --> router : next()
+deactivate auth
+
+router -> controller : createCoworkingspace
+activate controller
+
+controller -> model : create(req.body)
+activate model
+
+model -> db : CoworkingspaceSchema
+activate db
+db --> model : coworkingspace
+deactivate db
+
+model --> controller : coworkingspace
+deactivate model
+
+<-- controller : response
+deactivate controller
+deactivate router
+deactivate server
+@enduml

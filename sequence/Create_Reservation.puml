@@ -1,0 +1,48 @@
+@startuml
+skinparam backgroundColor #EEF2F5
+skinparam participantBackgroundColor #A9C2C3
+skinparam participantBorderColor gray
+skinparam sequenceLifeLineBackgroundColor #CC3333
+skinparam sequenceArrowColor black
+skinparam noteBackgroundColor #FDE284
+skinparam noteBorderColor #FDE284
+
+note left of server: add reservation: post
+
+participant "<<javaScript>>\n:server" as server
+participant "<<router>>\n:reservations" as router
+participant "<<middleware>>\n:auth" as auth
+participant "<<controllers>>\n:reservations" as controller
+participant "<<model>>\n:Reservation" as model
+participant "<<MongoDB>>\n:reservations" as db
+
+-> server : req.post('/api/v1/reservations')
+activate server
+
+server -> router : app.use('/reservations', reservations)
+activate router
+
+router -> auth : protect, authorize
+activate auth
+auth --> router : next()
+deactivate auth
+
+router -> controller : addReservation
+activate controller
+
+controller -> model : create(req.body)
+activate model
+
+model -> db : ReservationSchema
+activate db
+db --> model : reservation
+deactivate db
+
+model --> controller : reservation
+deactivate model
+
+<-- controller : response
+deactivate controller
+deactivate router
+deactivate server
+@enduml

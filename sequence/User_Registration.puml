@@ -1,0 +1,42 @@
+@startuml
+skinparam backgroundColor #EEF2F5
+skinparam participantBackgroundColor #A9C2C3
+skinparam participantBorderColor gray
+skinparam sequenceLifeLineBackgroundColor #CC3333
+skinparam sequenceArrowColor black
+skinparam noteBackgroundColor #FDE284
+skinparam noteBorderColor #FDE284
+
+note left of server: user register: post
+
+participant "<<javaScript>>\n:server" as server
+participant "<<router>>\n:auth" as router
+participant "<<controllers>>\n:auth" as controller
+participant "<<model>>\n:User" as model
+participant "<<MongoDB>>\n:users" as db
+
+-> server : req.post('/api/v1/auth/register')
+activate server
+
+server -> router : app.use('/api/v1/auth', auth)
+activate router
+
+router -> controller : register
+activate controller
+
+controller -> model : create(req.body)
+activate model
+
+model -> db : UserSchema
+activate db
+db --> model : user
+deactivate db
+
+model --> controller : user
+deactivate model
+
+<-- controller : response (Token)
+deactivate controller
+deactivate router
+deactivate server
+@enduml
