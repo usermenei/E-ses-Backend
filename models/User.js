@@ -53,8 +53,17 @@ UserSchema.pre('save', async function (next) {
     this.password = await bcrypt.hash(this.password, salt);
 });
 
+// ✅ แก้ไขตรงนี้: เพิ่ม role และ name เข้าไปใน Token แล้ว
 UserSchema.methods.getSignedJwtToken = function () {
-    return jwt.sign({ id: this._id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRE });
+    return jwt.sign(
+        { 
+            id: this._id,
+            role: this.role,
+            name: this.name
+        }, 
+        process.env.JWT_SECRET, 
+        { expiresIn: process.env.JWT_EXPIRE }
+    );
 };
 
 UserSchema.methods.matchPassword = async function (enteredPassword) {
