@@ -350,6 +350,8 @@ exports.confirmReservation = async (req, res, next) => {
         reservation.status = 'success';
         await reservation.save();
 
+        //console.log("👉 กำลังจะอัปเดต User ID:", reservation.user);
+
         await User.findByIdAndUpdate(reservation.user, {
             $inc: { numberOfEntries: 1 }
         });
