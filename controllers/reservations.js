@@ -171,14 +171,17 @@ exports.addReservation = async (req, res, next) => {
 
         // Limit 3 reservations (normal user)
         if (req.user.role !== 'admin') {
+            
+            // ✅ แก้ไขตรงนี้: เพิ่มเงื่อนไขให้นับเฉพาะ status ที่เป็น pending หรือ success เท่านั้น
             const userReservations = await Reservation.countDocuments({
-                user: req.user.id
+                user: req.user.id,
+                status: { $in: ['pending', 'success'] } 
             });
 
             if (userReservations >= 3) {
                 return res.status(400).json({
                     success: false,
-                    message: "User already has 3 reservations"
+                    message: "User already has 3 active reservations (pending or approved)"
                 });
             }
         }
@@ -222,17 +225,24 @@ exports.updateReservation = async (req, res, next) => {
             });
         }
 
+        // 🌟 NEW RULE 1: User ธรรมดา จะแก้ไขได้เฉพาะคิวที่ยังเป็น 'pending'
+        if (req.user.role !== 'admin' && reservation.status !== 'pending') {
+            return res.status(400).json({ 
+                success: false, 
+                message: "You can only update pending reservations" 
+            });
+        }
+
         // 3️⃣ Prevent changing owner
         if (req.body.user) {
             delete req.body.user;
         }
 
-        // 4️⃣ Prevent manual success confirmation
-        if (req.body.status === 'success') {
-            return res.status(400).json({
-                success: false,
-                message: "Cannot manually set reservation to success"
-            });
+        // 🌟 NEW RULE 2 (แทนที่ Step 4 เดิม): 
+        // - User ธรรมดา: ห้ามเปลี่ยนสถานะ (โดนเตะทิ้งถ้าแอบส่งมา)
+        // - Admin: เปลี่ยนสถานะได้ตามสบาย (เป็น success, cancelled ได้หมด)
+        if (req.user.role !== 'admin' && req.body.status) {
+            delete req.body.status;
         }
 
         // 5️⃣ If coworkingSpace is being updated → validate it exists
