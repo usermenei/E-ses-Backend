@@ -143,7 +143,7 @@ exports.addReservation = async (req, res, next) => {
         req.body.user = req.user.id;
         req.body.status = 'pending';
 
-        // ✅ 1. ตรวจสอบว่า End Time ต้องมากกว่า Start Time
+        // 1. ตรวจสอบว่า End Time ต้องมากกว่า Start Time
         if (req.body.apptDate && req.body.apptEndDate) {
             const startDate = new Date(req.body.apptDate);
             const endDate = new Date(req.body.apptEndDate);
@@ -160,6 +160,25 @@ exports.addReservation = async (req, res, next) => {
             });
         }
 
+        // 🌟 NEW RULE: ป้องกันการจองเวลาซ้อนทับ (วันเดียวกัน และเวลาทับซ้อนกัน)
+        const overlappingReservation = await Reservation.findOne({
+            user: req.user.id,
+            status: { $in: ['pending', 'success'] }, // เช็คเฉพาะคิวที่ยัง active
+            $and: [
+                { apptDate: { $lt: req.body.apptEndDate } }, // เริ่มคิวเดิม < จบคิวใหม่
+                { apptEndDate: { $gt: req.body.apptDate } }  // จบคิวเดิม > เริ่มคิวใหม่
+            ]
+        }).populate('coworkingSpace', 'name').lean(); // ✅ ดึงชื่อสถานที่ที่ชนมาด้วย
+
+        if (overlappingReservation) {
+            const spaceName = overlappingReservation.coworkingSpace ? overlappingReservation.coworkingSpace.name : 'another location';
+            return res.status(400).json({
+                success: false,
+                errorType: "TIME_OVERLAP", // ✅ ส่ง Error แบบใหม่ (คนละแบบกับปกติ)
+                message: `Booking failed: You already have a reservation at '${spaceName}' on this exact date and time.`
+            });
+        }
+
         const coworkingspace = await Coworkingspace.findById(req.params.coworkingspaceId);
 
         if (!coworkingspace) {
@@ -171,16 +190,15 @@ exports.addReservation = async (req, res, next) => {
 
         // Limit 3 reservations (normal user)
         if (req.user.role !== 'admin') {
-            
-            // ✅ แก้ไขตรงนี้: เพิ่มเงื่อนไขให้นับเฉพาะ status ที่เป็น pending หรือ success เท่านั้น
             const userReservations = await Reservation.countDocuments({
                 user: req.user.id,
-                status: { $in: ['pending', 'success'] } 
+                status: { $in: ['pending'] } 
             });
 
             if (userReservations >= 3) {
                 return res.status(400).json({
                     success: false,
+                    errorType: "LIMIT_EXCEEDED", // ✅ แยก Error Type ของโควต้าเต็มให้ชัดเจน
                     message: "User already has 3 active reservations (pending or approved)"
                 });
             }
@@ -198,7 +216,6 @@ exports.addReservation = async (req, res, next) => {
     }
 };
 
-
 // =====================================================
 // @desc    Update reservation
 // =====================================================
@@ -206,7 +223,6 @@ exports.updateReservation = async (req, res, next) => {
     try {
         let reservation = await Reservation.findById(req.params.id);
 
-        // 1️⃣ Check reservation exists
         if (!reservation) {
             return res.status(404).json({
                 success: false,
@@ -214,7 +230,6 @@ exports.updateReservation = async (req, res, next) => {
             });
         }
 
-        // 2️⃣ Authorization check
         if (
             reservation.user.toString() !== req.user.id &&
             req.user.role !== 'admin'
@@ -225,7 +240,6 @@ exports.updateReservation = async (req, res, next) => {
             });
         }
 
-        // 🌟 NEW RULE 1: User ธรรมดา จะแก้ไขได้เฉพาะคิวที่ยังเป็น 'pending'
         if (req.user.role !== 'admin' && reservation.status !== 'pending') {
             return res.status(400).json({ 
                 success: false, 
@@ -233,19 +247,44 @@ exports.updateReservation = async (req, res, next) => {
             });
         }
 
-        // 3️⃣ Prevent changing owner
         if (req.body.user) {
             delete req.body.user;
         }
 
-        // 🌟 NEW RULE 2 (แทนที่ Step 4 เดิม): 
-        // - User ธรรมดา: ห้ามเปลี่ยนสถานะ (โดนเตะทิ้งถ้าแอบส่งมา)
-        // - Admin: เปลี่ยนสถานะได้ตามสบาย (เป็น success, cancelled ได้หมด)
         if (req.user.role !== 'admin' && req.body.status) {
             delete req.body.status;
         }
 
-        // 5️⃣ If coworkingSpace is being updated → validate it exists
+        // 🌟 NEW RULE: ป้องกันเวลาซ้อนทับตอนกด Edit
+        const checkStartDate = req.body.apptDate || reservation.apptDate;
+        const checkEndDate = req.body.apptEndDate || reservation.apptEndDate;
+
+        if (new Date(checkEndDate) <= new Date(checkStartDate)) {
+            return res.status(400).json({
+                success: false,
+                message: "End time must be after start time"
+            });
+        }
+
+        const overlappingReservation = await Reservation.findOne({
+            user: reservation.user,
+            _id: { $ne: req.params.id }, // ละเว้นการเช็คชนกับตัวเอง
+            status: { $in: ['pending', 'success'] },
+            $and: [
+                { apptDate: { $lt: checkEndDate } },
+                { apptEndDate: { $gt: checkStartDate } }
+            ]
+        }).populate('coworkingSpace', 'name').lean(); // ✅ ดึงชื่อสถานที่ที่ชนมาด้วย
+
+        if (overlappingReservation) {
+            const spaceName = overlappingReservation.coworkingSpace ? overlappingReservation.coworkingSpace.name : 'another location';
+            return res.status(400).json({
+                success: false,
+                errorType: "TIME_OVERLAP", // ✅ ส่ง Error แบบใหม่ให้ Frontend รู้
+                message: `Update failed: The new time overlaps with your existing reservation at '${spaceName}'.`
+            });
+        }
+
         if (req.body.coworkingSpace) {
             const coworkingspace = await Coworkingspace.findById(
                 req.body.coworkingSpace
@@ -259,7 +298,6 @@ exports.updateReservation = async (req, res, next) => {
             }
         }
 
-        // 6️⃣ Perform update
         reservation = await Reservation.findByIdAndUpdate(
             req.params.id,
             req.body,
@@ -277,37 +315,21 @@ exports.updateReservation = async (req, res, next) => {
     } catch (err) {
         console.error(err);
 
-        // Duplicate key error
         if (err.code === 11000) {
-            return res.status(400).json({
-                success: false,
-                message: "Duplicate field value entered."
-            });
+            return res.status(400).json({ success: false, message: "Duplicate field value entered." });
         }
 
-        // Validation error
         if (err.name === 'ValidationError') {
-            return res.status(400).json({
-                success: false,
-                message: err.message
-            });
+            return res.status(400).json({ success: false, message: err.message });
         }
 
-        // Cast error (invalid Mongo ID)
         if (err.name === 'CastError') {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid ID format"
-            });
+            return res.status(400).json({ success: false, message: "Invalid ID format" });
         }
 
-        return res.status(500).json({
-            success: false,
-            message: "Cannot update reservation"
-        });
+        return res.status(500).json({ success: false, message: "Cannot update reservation" });
     }
 };
-
 // =====================================================
 // @desc    Delete reservation
 // =====================================================

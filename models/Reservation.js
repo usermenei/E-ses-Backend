@@ -30,4 +30,7 @@ const ReservationSchema = new mongoose.Schema({
     }
 });
 
+// สร้าง Index เพื่อให้ค้นหาได้เร็วขึ้นแบบติดจรวด!
+ReservationSchema.index({ user: 1, status: 1, apptDate: 1, apptEndDate: 1 });
+
 module.exports = mongoose.model('Reservation', ReservationSchema);
