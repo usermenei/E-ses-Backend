@@ -5,6 +5,10 @@ const ReservationSchema = new mongoose.Schema({
         type: Date,
         required: true
     },
+    apptEndDate: {   // ✅ เพิ่มฟิลด์นี้เข้ามาสำหรับเวลาสิ้นสุด
+        type: Date,
+        required: true 
+    },
     user: {
         type: mongoose.Schema.ObjectId,
         ref: 'User',

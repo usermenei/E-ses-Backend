@@ -71,7 +71,10 @@ exports.getReservations = async (req, res, next) => {
             }
         }
 
-        const reservations = await query;
+        const reservations = await Reservation.find(query)
+        .populate({ path: 'coworkingSpace', select: 'name district province picture' })
+        // 👇 เติมบรรทัดนี้ลงไป เพื่อให้มันดึงชื่อ user ติดมาด้วย
+        .populate({ path: 'user', select: 'name email' });
 
         return res.status(200).json({
             success: true,
@@ -129,7 +132,6 @@ exports.getReservation = async (req, res, next) => {
 // =====================================================
 exports.addReservation = async (req, res, next) => {
     try {
-        // ensure authenticated user has a role
         if (!req.user || !req.user.role) {
             return res.status(403).json({
                 success: false,
@@ -141,9 +143,24 @@ exports.addReservation = async (req, res, next) => {
         req.body.user = req.user.id;
         req.body.status = 'pending';
 
-        const coworkingspace = await Coworkingspace.findById(
-            req.params.coworkingspaceId
-        );
+        // ✅ 1. ตรวจสอบว่า End Time ต้องมากกว่า Start Time
+        if (req.body.apptDate && req.body.apptEndDate) {
+            const startDate = new Date(req.body.apptDate);
+            const endDate = new Date(req.body.apptEndDate);
+            if (endDate <= startDate) {
+                return res.status(400).json({
+                    success: false,
+                    message: "End time must be after start time"
+                });
+            }
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: "Please provide both start time and end time"
+            });
+        }
+
+        const coworkingspace = await Coworkingspace.findById(req.params.coworkingspaceId);
 
         if (!coworkingspace) {
             return res.status(404).json({
@@ -154,7 +171,6 @@ exports.addReservation = async (req, res, next) => {
 
         // Limit 3 reservations (normal user)
         if (req.user.role !== 'admin') {
-
             const userReservations = await Reservation.countDocuments({
                 user: req.user.id
             });
