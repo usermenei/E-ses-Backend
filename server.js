@@ -39,10 +39,7 @@ const app = express();
 app.set("query parser", "extended");
 const cors = require("cors");
 app.use(
-  cors({
-    origin: "http://localhost:3000",
-    credentials: true,
-  })
+  cors()
 );
 
 // Body parser
